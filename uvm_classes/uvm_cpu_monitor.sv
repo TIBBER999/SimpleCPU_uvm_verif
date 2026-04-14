@@ -1,0 +1,38 @@
+class uvm_cpu_monitor extends uvm_monitor;
+    `uvm_component_utils(uvm_cpu_monitor)
+
+    virtual cpu_bfm bfm;
+    uvm_analysis_port#(uvm_cpu_transaction) ap;
+
+    function new(string name, uvm_component parent);
+        super.new(name, parent);
+        ap = new("ap", this);
+    endfunction
+
+    function void build_phase(uvm_phase phase);
+        super.build_phase(phase);
+        if (!uvm_config_db#(virtual cpu_bfm)::get(this, "", "bfm", bfm))
+            `uvm_error("MON", "BFM not found")
+    endfunction
+
+    task run_phase(uvm_phase phase);
+        uvm_cpu_transaction trans;
+
+        forever begin
+            @(posedge bfm.clk);
+            if (bfm.load) begin
+                trans = uvm_cpu_transaction::type_id::create("trans");
+                trans.instr = bfm.in;
+                ap.write(trans);
+            end
+            if (bfm.w) begin
+                trans = uvm_cpu_transaction::type_id::create("trans");
+                trans.expected_out = bfm.out;
+                trans.Z = bfm.Z;
+                trans.N = bfm.N;
+                trans.V = bfm.V;
+                ap.write(trans);
+            end
+        end
+    endtask
+endclass : uvm_cpu_monitor

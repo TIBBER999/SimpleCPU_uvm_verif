@@ -1,0 +1,24 @@
+package uvm_cpu_pkg;
+    import uvm_pkg::*;
+    `include "uvm_macros.svh"
+
+    typedef enum logic [4:0] {
+        INSTR_MOV_IMM   = 5'b110_10,
+        INSTR_MOV_SHIFT = 5'b110_00,
+        INSTR_ADD       = 5'b101_00,
+        INSTR_CMP       = 5'b101_01,
+        INSTR_AND       = 5'b101_10,
+        INSTR_MVN       = 5'b101_11
+    } instr_t;
+
+    // Include UVM class files
+    `include "uvm_cpu_transaction.sv"
+    `include "uvm_cpu_driver.sv"
+    `include "uvm_cpu_monitor.sv"
+    `include "uvm_cpu_agent.sv"
+    `include "uvm_cpu_scoreboard.sv"
+    `include "uvm_cpu_coverage.sv"
+    `include "uvm_cpu_env.sv"
+    `include "uvm_cpu_sequence.sv"
+    `include "uvm_cpu_test.sv"
+endpackage : uvm_cpu_pkg
