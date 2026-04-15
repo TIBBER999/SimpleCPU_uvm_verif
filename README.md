@@ -50,8 +50,6 @@ graph TD
     C --> H[uvm_sequencer]
     H --> I[uvm_cpu_sequence]
     I --> J[uvm_cpu_exhaust_sequence]
-    G --> D[uvm_cpu_scoreboard]
-    G --> E[uvm_cpu_coverage]
 ```
 
 ## Prerequisites
