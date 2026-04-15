@@ -37,6 +37,21 @@ The verification environment follows UVM methodology with the following componen
 - **uvm_cpu_coverage**: Functional coverage collector for instruction and data patterns
 - **uvm_cpu_exhaust_sequence**: Comprehensive test sequence covering all instruction combinations
 
+### UVM Component Hierarchy
+
+```mermaid
+graph TD
+    A[uvm_cpu_test] --> B[uvm_cpu_env]
+    B --> C[uvm_cpu_agent]
+    B --> D[uvm_cpu_scoreboard]
+    B --> E[uvm_cpu_coverage]
+    C --> F[uvm_cpu_driver]
+    C --> G[uvm_cpu_monitor]
+    C --> H[uvm_sequencer]
+    H --> I[uvm_cpu_sequence]
+    I --> J[uvm_cpu_exhaust_sequence]
+```
+
 ## Prerequisites
 
 - **Questasim/ModelSim**: HDL simulator with UVM support
