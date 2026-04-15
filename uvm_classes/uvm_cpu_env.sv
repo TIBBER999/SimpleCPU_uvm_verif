@@ -17,6 +17,7 @@ class uvm_cpu_env extends uvm_env;
     endfunction
 
     function void connect_phase(uvm_phase phase);
-        agent_h.monitor_h.ap.connect(coverage.analysis_export);
+        agent_h.ap.connect(coverage_h.analysis_export);
+        agent_h.ap.connect(scoreboard_h.analysis_export);
     endfunction
 endclass : uvm_cpu_env

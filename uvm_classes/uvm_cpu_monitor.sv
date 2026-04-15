@@ -18,21 +18,29 @@ class uvm_cpu_monitor extends uvm_monitor;
     task run_phase(uvm_phase phase);
         uvm_cpu_transaction trans;
 
+        fork 
         forever begin
             @(posedge bfm.clk);
             if (bfm.load) begin
                 trans = uvm_cpu_transaction::type_id::create("trans");
                 trans.instr = bfm.in;
+                trans.check_out= 0;
+                `uvm_info("MON", $sformatf("Monitor LOAD observed instruction: 0x%0h", trans.instr), UVM_LOW)
                 ap.write(trans);
             end
-            if (bfm.w) begin
+        end
+        forever begin
+            @(posedge bfm.w) begin
                 trans = uvm_cpu_transaction::type_id::create("trans");
                 trans.expected_out = bfm.out;
                 trans.Z = bfm.Z;
                 trans.N = bfm.N;
                 trans.V = bfm.V;
+                trans.check_out= 1;
+                `uvm_info("MON", $sformatf("Monitor Start observed result: 0x%0h", trans.expected_out), UVM_LOW)
                 ap.write(trans);
             end
         end
+        join
     endtask
 endclass : uvm_cpu_monitor

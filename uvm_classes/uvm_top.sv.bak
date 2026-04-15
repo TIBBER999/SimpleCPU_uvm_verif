@@ -1,5 +1,4 @@
 import uvm_pkg::*;
-`include "uvm_macros.svh"
 import uvm_cpu_pkg::*;
 
 module uvm_top;

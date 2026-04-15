@@ -1,7 +1,12 @@
 class uvm_cpu_exhaust_sequence extends uvm_sequence#(uvm_cpu_transaction);
     `uvm_object_utils(uvm_cpu_exhaust_sequence)
 
-    function new(string name = "uvm_cpu_sequence");
+    localparam bit [1:0] SH_NONE = 2'b00;
+    localparam bit [1:0] SH_LSL  = 2'b01;
+    localparam bit [1:0] SH_LSR  = 2'b10;
+    localparam bit [1:0] SH_ASR  = 2'b11;
+
+    function new(string name = "uvm_cpu_exhaust_sequence");
         super.new(name);
     endfunction
 
@@ -58,61 +63,59 @@ class uvm_cpu_exhaust_sequence extends uvm_sequence#(uvm_cpu_transaction);
 
     // ── Transaction wrappers ──────────────────────────────────────────────
     task send_instr(
-        input  bit [15:0] instr,
-        output bit [15:0] result
-    );
-        bit [15:0] dummy;
-        trans = uvm_cpu_transaction::type_id::create("trans");
-        start_item(trans);
-        trans.instr = instr; // MOV R0, 0x42
-        finish_item(trans);
+        input bit [15:0] instr,
+        input bit [15:0] expected_out = 16'h0000,
+        input bit Z=0,
+        input bit N=0, 
+        input bit V=0,
+        input bit is_reset = 0);
+        uvm_cpu_transaction trans;
 
-        // Then execute
         trans = uvm_cpu_transaction::type_id::create("trans");
         start_item(trans);
-        trans.expected_out = result; // Same, but for execution
-        trans.check_out = 1;
+        trans.instr = instr;
+        trans.expected_out = expected_out;
+        trans.is_reset = is_reset;
+        trans.Z = Z;
+        trans.N = N;
+        trans.V = V;
         finish_item(trans);
     endtask : send_instr
 
-    task send_instr_no_out(input bit [15:0] instr);
-        bit [15:0] unused;
-        send_instr(instr, unused);
-    endtask : send_instr_no_out
-
     task preload_reg_8(input bit [2:0] reg_num, input bit [7:0] val);
-        send_instr_no_out(enc_MOV_imm(reg_num, val));
+        send_instr(enc_MOV_imm(reg_num, val));
     endtask : preload_reg_8
 
+    task send_reset();
+        send_instr(16'h0000, 16'h0000, 0, 0, 0, 1);
+    endtask : send_reset
+
     task test_MOV_imm();
-        bit [15:0] result;
         bit [7:0]  imm_vals[6] = '{8'h00, 8'h01, 8'h7F, 8'h80, 8'hFF, 8'hA5};
         $display("\n=== test_MOV_imm ===");
         foreach (imm_vals[i])
             for (int r = 0; r < 8; r++) begin
-                $display("Set R%0d= 'h%0h", r, imm_vals[i]);
-                send_instr(enc_MOV_imm(r[2:0], imm_vals[i]), result);
+                $display("Set R%0d= 'h%0h, encoding 'h%0h", r, imm_vals[i], enc_MOV_imm(r[2:0], imm_vals[i]));
+                send_instr(enc_MOV_imm(r[2:0], imm_vals[i]));
             end
     endtask : test_MOV_imm
 
     task test_MOV_shift();
-        bit [15:0] result;
         $display("\n=== test_MOV_shift ===");
         for (int r = 0; r < 8; r++)
             preload_reg_8(r[2:0], 8'b1 << r[2:0]);
         for (int sh = 0; sh < 4; sh++)
             for (int rd = 0; rd < 8; rd++)
                 for (int rm = 0; rm < 8; rm++)
-                    send_instr(enc_MOV_shift(rd[2:0], rm[2:0], sh[1:0]), result);
+                    send_instr(enc_MOV_shift(rd[2:0], rm[2:0], sh[1:0]));
         preload_reg_8(3'd0, 8'h00);
         for (int sh = 0; sh < 4; sh++)
-            send_instr(enc_MOV_shift(3'd1, 3'd0, sh[1:0]), result);
+            send_instr(enc_MOV_shift(3'd1, 3'd0, sh[1:0]));
         preload_reg_8(3'd0, 8'hFF);
-        send_instr(enc_MOV_shift(3'd1, 3'd0, SH_ASR), result);
+        send_instr(enc_MOV_shift(3'd1, 3'd0, SH_ASR));
     endtask : test_MOV_shift
 
     task test_ADD();
-        bit [15:0] result;
         $display("\n=== test_ADD ===");
         preload_reg_8(3'd0, 8'h01);
         preload_reg_8(3'd1, 8'h7F);
@@ -121,23 +124,22 @@ class uvm_cpu_exhaust_sequence extends uvm_sequence#(uvm_cpu_transaction);
         for (int sh = 0; sh < 4; sh++)
             for (int rn = 0; rn < 4; rn++)
                 for (int rm = 0; rm < 4; rm++)
-                    send_instr(enc_ADD(3'd4, rn[2:0], rm[2:0], sh[1:0]), result);
+                    send_instr(enc_ADD(3'd4, rn[2:0], rm[2:0], sh[1:0]));
         for (int r = 0; r < 8; r++) begin
             preload_reg_8(r[2:0], 8'h01);
-            send_instr(enc_ADD(r[2:0], r[2:0], r[2:0]), result);
+            send_instr(enc_ADD(r[2:0], r[2:0], r[2:0]));
         end
         preload_reg_8(3'd0, 8'h15);
-        send_instr(enc_ADD(3'd1, 3'd0, 3'd0), result);
+        send_instr(enc_ADD(3'd1, 3'd0, 3'd0));
         preload_reg_8(3'd0, 8'h7F);
         preload_reg_8(3'd1, 8'h7F);
-        send_instr(enc_ADD(3'd2, 3'd0, 3'd1), result);
+        send_instr(enc_ADD(3'd2, 3'd0, 3'd1));
         preload_reg_8(3'd0, 8'h80);
         preload_reg_8(3'd1, 8'h80);
-        send_instr(enc_ADD(3'd2, 3'd0, 3'd1), result);
+        send_instr(enc_ADD(3'd2, 3'd0, 3'd1));
     endtask : test_ADD
 
     task test_CMP();
-        bit [15:0] result;
         $display("\n=== test_CMP ===");
 
         // ── Z=1 : equal values ────────────────────────────────────────
@@ -146,7 +148,7 @@ class uvm_cpu_exhaust_sequence extends uvm_sequence#(uvm_cpu_transaction);
         // 0x0055 - 0x0055 = 0x0000  →  Z=1, N=0, V=0
         preload_reg_8(3'd0, 8'h55);
         preload_reg_8(3'd1, 8'h55);
-        send_instr(enc_CMP(3'd0, 3'd1), result);
+        send_instr(enc_CMP(3'd0, 3'd1));
 
         // ── N=1 : Rn < Rm (both positive, no overflow) ────────────────
         // R0 = sximm8(0x01) = 0x0001
@@ -155,7 +157,7 @@ class uvm_cpu_exhaust_sequence extends uvm_sequence#(uvm_cpu_transaction);
         // V=0 because: a[15]=0, b[15]=0, same sign → no signed overflow
         preload_reg_8(3'd0, 8'h01);
         preload_reg_8(3'd1, 8'h7F);
-        send_instr(enc_CMP(3'd0, 3'd1), result);
+        send_instr(enc_CMP(3'd0, 3'd1));
 
         // ── Clean (N=0, Z=0, V=0) : Rn > Rm, both positive ──────────
         // R0 = sximm8(0x7F) = 0x007F
@@ -163,7 +165,7 @@ class uvm_cpu_exhaust_sequence extends uvm_sequence#(uvm_cpu_transaction);
         // 0x007F - 0x0001 = 0x007E  →  Z=0, N=0, V=0
         preload_reg_8(3'd0, 8'h7F);
         preload_reg_8(3'd1, 8'h01);
-        send_instr(enc_CMP(3'd0, 3'd1), result);
+        send_instr(enc_CMP(3'd0, 3'd1));
 
         // ── V=1 : signed overflow, positive minus negative → negative ─
         //
@@ -226,16 +228,16 @@ class uvm_cpu_exhaust_sequence extends uvm_sequence#(uvm_cpu_transaction);
         // Build R0 = 0x4001
         preload_reg_8(3'd0, 8'h01);            // R0 = 0x0001
         repeat (14)
-            send_instr_no_out(enc_ADD(3'd0, 3'd0, 3'd0));  // R0 doubles × 14 → 0x4000
+            send_instr(enc_ADD(3'd0, 3'd0, 3'd0));  // R0 doubles × 14 → 0x4000
         preload_reg_8(3'd1, 8'h01);            // R1 = 0x0001
-        send_instr_no_out(enc_ADD(3'd0, 3'd0, 3'd1));      // R0 = 0x4000 + 0x0001 = 0x4001
+        send_instr(enc_ADD(3'd0, 3'd0, 3'd1));      // R0 = 0x4000 + 0x0001 = 0x4001
 
         // Build R2 = 0xC000
         preload_reg_8(3'd2, 8'h80);            // R2 = sximm8(0x80) = 0xFF80
         repeat (7)
-            send_instr_no_out(enc_ADD(3'd2, 3'd2, 3'd2));  // R2 doubles × 7 → 0xC000
+            send_instr(enc_ADD(3'd2, 3'd2, 3'd2));  // R2 doubles × 7 → 0xC000
 
-        send_instr(enc_CMP(3'd0, 3'd2), result);
+        send_instr(enc_CMP(3'd0, 3'd2));
         // expected: 0x4001 - 0xC000 = 0x8001  →  V=1, N=1, Z=0
         // ── Shift variants of CMP (V=0 path, no writeback side-effect) ─
         // R0 = sximm8(0x10) = 0x0010
@@ -247,7 +249,7 @@ class uvm_cpu_exhaust_sequence extends uvm_sequence#(uvm_cpu_transaction);
         preload_reg_8(3'd0, 8'h10);
         preload_reg_8(3'd1, 8'h04);
         for (int sh = 0; sh < 4; sh++)
-            send_instr(enc_CMP(3'd0, 3'd1, sh[1:0]), result);
+            send_instr(enc_CMP(3'd0, 3'd1, sh[1:0]));
 
         // ── No writeback check ─────────────────────────────────────────
         // CMP must NOT write the ALU result back to any register.
@@ -256,103 +258,108 @@ class uvm_cpu_exhaust_sequence extends uvm_sequence#(uvm_cpu_transaction);
         // then MOV R6 ← R5.  If CMP incorrectly wrote back, R0 or another
         // register is corrupted and the MOV will return the wrong value.
         preload_reg_8(3'd5, 8'h42);            // R5 = 0x0042
-        send_instr(enc_CMP(3'd0, 3'd1), result);
-        send_instr(enc_MOV_shift(3'd6, 3'd5), result);
+        send_instr(enc_CMP(3'd0, 3'd1));
+        send_instr(enc_MOV_shift(3'd6, 3'd5));
 
     endtask : test_CMP
 
     task test_AND();
-        bit [15:0] result;
         $display("\n=== test_AND ===");
         preload_reg_8(3'd0, 8'hFF);
         preload_reg_8(3'd1, 8'h00);
-        send_instr(enc_AND(3'd2, 3'd0, 3'd1), result);
+        send_instr(enc_AND(3'd2, 3'd0, 3'd1));
         preload_reg_8(3'd0, 8'hA5);
         preload_reg_8(3'd1, 8'hFF);
-        send_instr(enc_AND(3'd2, 3'd0, 3'd1), result);
+        send_instr(enc_AND(3'd2, 3'd0, 3'd1));
         for (int r = 0; r < 8; r++) begin
             preload_reg_8(r[2:0], 8'hA5);
-            send_instr(enc_AND(r[2:0], r[2:0], r[2:0]), result);
+            send_instr(enc_AND(r[2:0], r[2:0], r[2:0]));
         end
         preload_reg_8(3'd0, 8'hA5);
         preload_reg_8(3'd1, 8'h5A);
-        send_instr(enc_AND(3'd2, 3'd0, 3'd1), result);
+        send_instr(enc_AND(3'd2, 3'd0, 3'd1));
         preload_reg_8(3'd0, 8'hAA);
         preload_reg_8(3'd1, 8'h55);
         for (int sh = 0; sh < 4; sh++)
-            send_instr(enc_AND(3'd2, 3'd0, 3'd1, sh[1:0]), result);
+            send_instr(enc_AND(3'd2, 3'd0, 3'd1, sh[1:0]));
     endtask : test_AND
 
     task test_MVN();
-        bit [15:0] result;
         $display("\n=== test_MVN ===");
         preload_reg_8(3'd0, 8'h00);
-        send_instr(enc_MVN(3'd1, 3'd0), result);
+        send_instr(enc_MVN(3'd1, 3'd0));
         preload_reg_8(3'd0, 8'hFF);
-        send_instr(enc_MVN(3'd1, 3'd0), result);
+        send_instr(enc_MVN(3'd1, 3'd0));
         preload_reg_8(3'd0, 8'h7F);
-        send_instr(enc_MVN(3'd1, 3'd0), result);
+        send_instr(enc_MVN(3'd1, 3'd0));
         preload_reg_8(3'd0, 8'h80);
-        send_instr(enc_MVN(3'd1, 3'd0), result);
+        send_instr(enc_MVN(3'd1, 3'd0));
         preload_reg_8(3'd0, 8'hA5);
-        send_instr(enc_MVN(3'd1, 3'd0), result);
-        send_instr(enc_MVN(3'd2, 3'd1), result);
+        send_instr(enc_MVN(3'd1, 3'd0));
+        send_instr(enc_MVN(3'd2, 3'd1));
         for (int r = 0; r < 8; r++) begin
             preload_reg_8(r[2:0], 8'hA5);
-            send_instr(enc_MVN(r[2:0], r[2:0]), result);
+            send_instr(enc_MVN(r[2:0], r[2:0]));
         end
         preload_reg_8(3'd0, 8'hAA);
         for (int sh = 0; sh < 4; sh++)
-            send_instr(enc_MVN(3'd1, 3'd0, sh[1:0]), result);
+            send_instr(enc_MVN(3'd1, 3'd0, sh[1:0]));
     endtask : test_MVN
 
     task test_sequences();
-        bit [15:0] result;
         $display("\n=== test_sequences ===");
-        send_instr_no_out(enc_MOV_imm  (3'd0, 8'h0A));
-        send_instr_no_out(enc_MOV_imm  (3'd1, 8'h05));
-        send_instr       (enc_ADD      (3'd2, 3'd0, 3'd1), result);
-        send_instr       (enc_CMP      (3'd2, 3'd1),       result);
-        send_instr       (enc_AND      (3'd3, 3'd2, 3'd0), result);
-        send_instr       (enc_MVN      (3'd4, 3'd3),       result);
-        send_instr       (enc_MOV_shift(3'd5, 3'd4),       result);
-        send_instr_no_out(enc_MOV_imm(3'd0, 8'h00));
-        send_instr_no_out(enc_MOV_imm(3'd1, 8'h01));
-        repeat (8) send_instr(enc_ADD(3'd0, 3'd0, 3'd1), result);
-        send_instr_no_out(enc_MOV_imm(3'd0, 8'h10));
-        send_instr_no_out(enc_MOV_imm(3'd1, 8'h10));
+        send_instr(enc_MOV_imm  (3'd0, 8'h0A));
+        send_instr(enc_MOV_imm  (3'd1, 8'h05));
+        send_instr       (enc_ADD      (3'd2, 3'd0, 3'd1));
+        send_instr       (enc_CMP      (3'd2, 3'd1)     );
+        send_instr       (enc_AND      (3'd3, 3'd2, 3'd0));
+        send_instr       (enc_MVN      (3'd4, 3'd3)     );
+        send_instr       (enc_MOV_shift(3'd5, 3'd4)     );
+        send_instr(enc_MOV_imm(3'd0, 8'h00));
+        send_instr(enc_MOV_imm(3'd1, 8'h01));
+        repeat (8) send_instr(enc_ADD(3'd0, 3'd0, 3'd1));
+        send_instr(enc_MOV_imm(3'd0, 8'h10));
+        send_instr(enc_MOV_imm(3'd1, 8'h10));
         repeat (4) begin
-            send_instr(enc_CMP(3'd0, 3'd1), result);
+            send_instr(enc_CMP(3'd0, 3'd1));
         end
-        repeat (4) send_instr(enc_ADD(3'd0, 3'd0, 3'd0), result);
-        repeat (4) send_instr(enc_MVN(3'd1, 3'd1),       result);
+        repeat (4) send_instr(enc_ADD(3'd0, 3'd0, 3'd0));
+        repeat (4) send_instr(enc_MVN(3'd1, 3'd1));
     endtask : test_sequences
 
     task test_reset();
-        bit [15:0] result;
         $display("\n=== test_reset ===");
-        bfm.send_cmd(.s2(1'b0), .load2(1'b1),
-                     .in2(enc_ADD(3'd0, 3'd1, 3'd2)), .out2(result));
-        bfm.reset_cpu(); scoreboard_h.reset();
-        send_instr_no_out(enc_MOV_imm(3'd0, 8'h0F));
-        send_instr_no_out(enc_MOV_imm(3'd1, 8'h01));
-        send_instr(enc_ADD(3'd2, 3'd0, 3'd1), result);
-        bfm.send_cmd(.s2(1'b0), .load2(1'b1),
-                     .in2(enc_AND(3'd3, 3'd0, 3'd1)), .out2(result));
-        bfm.reset_cpu(); scoreboard_h.reset();
-        send_instr(enc_MOV_imm(3'd7, 8'hAB), result);
+        
+        // 1. Send an instruction to alter the CPU state
+        send_instr(enc_ADD(3'd0, 3'd1, 3'd2));
+        
+        // 2. Trigger the UVM-compliant reset transaction
+        send_reset();
+        
+        // 3. Send instructions to verify CPU operates normally from a fresh state
+        send_instr(enc_MOV_imm(3'd0, 8'h0F));
+        send_instr(enc_MOV_imm(3'd1, 8'h01));
+        send_instr(enc_ADD(3'd2, 3'd0, 3'd1));
+        
+        // 4. Send another state-altering instruction
+        send_instr(enc_AND(3'd3, 3'd0, 3'd1));
+        
+        // 5. Trigger a second reset to ensure multiple resets work
+        send_reset();
+        
+        // 6. Verify CPU is responsive again
+        send_instr(enc_MOV_imm(3'd7, 8'hAB));
     endtask : test_reset
 
     task test_w_protocol();
-        bit [15:0] result;
         $display("\n=== test_w_protocol ===");
-        send_instr(enc_MOV_imm(3'd0, 8'hAA), result);
-        send_instr(enc_ADD(3'd1, 3'd0, 3'd0), result);
-        send_instr(enc_CMP(3'd0, 3'd0), result);
+        send_instr(enc_MOV_imm(3'd0, 8'hAA));
+        send_instr(enc_ADD(3'd1, 3'd0, 3'd0));
+        send_instr(enc_CMP(3'd0, 3'd0));
     endtask : test_w_protocol
 
     task test_random(input int unsigned num_ops = 300);
-        bit [15:0] instr, result;
+        bit [15:0] instr;
         bit [2:0]  rd, rn, rm;
         bit [1:0]  sh;
         bit [7:0]  imm;
@@ -360,7 +367,7 @@ class uvm_cpu_exhaust_sequence extends uvm_sequence#(uvm_cpu_transaction);
         $display("\n=== test_random (%0d ops) ===", num_ops);
         for (int r = 0; r < 8; r++) begin
             imm = $urandom_range(0, 255);
-            send_instr_no_out(enc_MOV_imm(r[2:0], imm));
+            send_instr(enc_MOV_imm(r[2:0], imm));
         end
         repeat (num_ops) begin
             rd     = $urandom_range(0, 7);
@@ -377,75 +384,92 @@ class uvm_cpu_exhaust_sequence extends uvm_sequence#(uvm_cpu_transaction);
                 4: instr = enc_AND      (rd, rn, rm, sh);
                 5: instr = enc_MVN      (rd,     rm, sh);
             endcase
-            send_instr(instr, result);
+            send_instr(instr);
         end
     endtask : test_random
     
     // Task to hit all defined instruction transitions
     task test_transitions();
-        bit [15:0] result;
         $display("=== Starting Directed Transitions Test ===");
 
         // Target: MOV_IMM => ADD
-        send_instr_no_out(enc_MOV_imm(3'd0, 8'h01)); // R0 = 1
-        send_instr_no_out(enc_MOV_imm(3'd1, 8'h02)); // R1 = 2
-        send_instr(enc_ADD(3'd2, 3'd0, 3'd1, SH_NONE), result);
+        send_instr(enc_MOV_imm(3'd0, 8'h01)); // R0 = 1
+        send_instr(enc_MOV_imm(3'd1, 8'h02)); // R1 = 2
+        send_instr(enc_ADD(3'd2, 3'd0, 3'd1, SH_NONE));
 
         // Target: MOV_IMM => CMP
-        send_instr_no_out(enc_MOV_imm(3'd0, 8'h05));
-        send_instr(enc_CMP(3'd0, 3'd1, SH_NONE), result);
+        send_instr(enc_MOV_imm(3'd0, 8'h05));
+        send_instr(enc_CMP(3'd0, 3'd1, SH_NONE));
 
         // Target: MOV_IMM => AND
-        send_instr_no_out(enc_MOV_imm(3'd0, 8'hFF));
-        send_instr(enc_AND(3'd2, 3'd0, 3'd1, SH_NONE), result);
+        send_instr(enc_MOV_imm(3'd0, 8'hFF));
+        send_instr(enc_AND(3'd2, 3'd0, 3'd1, SH_NONE));
 
         // Target: MOV_IMM => MVN
-        send_instr_no_out(enc_MOV_imm(3'd0, 8'hAA));
-        send_instr(enc_MVN(3'd2, 3'd0, SH_NONE), result);
+        send_instr(enc_MOV_imm(3'd0, 8'hAA));
+        send_instr(enc_MVN(3'd2, 3'd0, SH_NONE));
 
         // Target: MOV_IMM => MOV_SHIFT
-        send_instr_no_out(enc_MOV_imm(3'd0, 8'h01));
-        send_instr(enc_MOV_shift(3'd1, 3'd0, SH_LSL), result);
+        send_instr(enc_MOV_imm(3'd0, 8'h01));
+        send_instr(enc_MOV_shift(3'd1, 3'd0, SH_LSL));
     endtask
     
-    // Task to hit specific boundary bins in out_cov
     task test_output_corners();
-        bit [15:0] result;
         $display("=== Starting Output Corners Test ===");
-
+ 
         // Bin: zero (16'h0000)
-        send_instr_no_out(enc_MOV_imm(3'd0, 8'h00));
-        send_instr(enc_MOV_shift(3'd1, 3'd0, SH_NONE), result);
-
+        send_instr(enc_MOV_imm(3'd0, 8'h00));
+        send_instr(enc_MOV_shift(3'd1, 3'd0, SH_NONE));
+ 
         // Bin: all_ones (16'hFFFF)
-        send_instr_no_out(enc_MOV_imm(3'd0, 8'hFF));
-        send_instr(enc_MVN(3'd1, 3'd0, SH_NONE), result); // Logic: ~0xFF extended
-
+        // MVN of sximm8(0x00)=0x0000 → ~0x0000 = 0xFFFF
+        send_instr(enc_MOV_imm(3'd0, 8'h00));
+        send_instr(enc_MVN(3'd1, 3'd0, SH_NONE));
+ 
         // Bin: max_pos (16'h7FFF)
-        // Load 0x7F then Shift + OR or just Move specific values if supported
-        // Since MOV_IMM is 8-bit, we use ADD to construct 16'h7FFF
-        send_instr_no_out(enc_MOV_imm(3'd0, 8'h7F)); 
-        send_instr_no_out(enc_MOV_shift(3'd0, 3'd0, SH_LSL)); // R0 = 0x7F00 (depends on shift logic)
-        // ... (Repeat logic to reach 0x7FFF)
-
+        // Build 0x7FFF: load 0x01, double 14× → 0x4000,
+        // load 0x7F → 0x007F, MVN → 0xFF80, MVN again → 0x007F,
+        // then ADD 0x4000 + 0x3FFF.
+        // Simpler: load 0xFF→0x00FF, MVN→0xFF00, MVN→0x00FF,
+        // build 0x7F00 via shifts and OR isn't available.
+        // Best direct route: load 0x80→0xFF80, MVN→0x007F (=R1),
+        //   load 0x01, double 14× → 0x4000 (R0),
+        //   ADD R2, R0, R1 → 0x407F  (not 0x7FFF).
+        // Use repeated doubling + subtract approach:
+        //   0x7FFF = 0x8000 - 1
+        //   Load 0x80→0xFF80, double 8× → 0x8000, then ADD 0xFFFF
+        //   0xFFFF = MVN(0x0000)
+        //   0x8000 + 0xFFFF = 0x7FFF (mod 16-bit)
+        preload_reg_8(3'd0, 8'h80);                      // R0 = 0xFF80
+        repeat (8)
+            send_instr(enc_ADD(3'd0, 3'd0, 3'd0)); // R0 → 0x8000
+        preload_reg_8(3'd1, 8'h00);                      // R1 = 0x0000
+        send_instr(enc_MVN(3'd1, 3'd1));           // R1 = 0xFFFF
+        send_instr(enc_ADD(3'd2, 3'd0, 3'd1));            // R2 = 0x8000+0xFFFF = 0x7FFF
+ 
         // Bin: min_neg (16'h8000)
-        send_instr_no_out(enc_MOV_imm(3'd0, 8'h80));
-        send_instr_no_out(enc_MOV_shift(3'd0, 3'd0, SH_LSL)); 
-        send_instr(enc_MOV_shift(3'd1, 3'd0, SH_NONE), result);
-    endtask
+        // Load 0x80→0xFF80, double 8× → 0x8000
+        preload_reg_8(3'd0, 8'h80);                      // R0 = 0xFF80
+        repeat (8)
+            send_instr(enc_ADD(3'd0, 3'd0, 3'd0)); // R0 → 0x8000
+        send_instr(enc_MOV_shift(3'd1, 3'd0, SH_NONE));  // R1 = 0x8000
+    endtask : test_output_corners
 
     task body();
-        test_mov_imm();
+        test_MOV_imm();
         test_MOV_shift();
         test_ADD();
+        
         test_CMP();
         test_AND();
         test_MVN();
+        
         test_sequences();
+        
         test_reset();
         test_w_protocol();
         test_transitions();
         test_output_corners();
         test_random(300);
     endtask
-endclass : uvm_cpu_sequence
+endclass : uvm_cpu_exhaust_sequence

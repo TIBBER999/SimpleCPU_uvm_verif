@@ -1,1 +1,1 @@
-vsim -gui -voptargs=+acc -vopt -l mti.log work.top
+vsim -gui -voptargs=+acc -vopt -l mti.log work.uvm_top

@@ -16,10 +16,8 @@ package uvm_cpu_pkg;
     `include "uvm_cpu_driver.sv"
     `include "uvm_cpu_monitor.sv"
     `include "uvm_cpu_scoreboard.sv"
-    `include "uvm_cpu_coverage.sv"
     `include "uvm_cpu_agent.sv"
-    //`include "sequences/uvm_cpu_sequence.sv"
-    `include "sequences/uvm_cpu_exhaust_sequence.sv"
+    `include "uvm_cpu_sequence.sv"
     `include "uvm_cpu_env.sv"
     `include "uvm_cpu_test.sv"
 endpackage : uvm_cpu_pkg

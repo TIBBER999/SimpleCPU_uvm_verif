@@ -4,8 +4,8 @@ class uvm_cpu_transaction extends uvm_sequence_item;
     rand bit [15:0] instr;
     rand bit [15:0] expected_out;
     rand bit        check_out;
-    rand bit        check_flags;
     rand bit        Z, N, V;
+    rand bit        is_reset;
 
     function new(string name = "uvm_cpu_transaction");
         super.new(name);
@@ -25,10 +25,10 @@ class uvm_cpu_transaction extends uvm_sequence_item;
         instr = rhs_.instr;
         expected_out = rhs_.expected_out;
         check_out = rhs_.check_out;
-        check_flags = rhs_.check_flags;
         Z = rhs_.Z;
         N = rhs_.N;
         V = rhs_.V;
+        is_reset = rhs_.is_reset;
     endfunction
 
     function bit do_compare(uvm_object rhs, uvm_comparer comparer);
@@ -38,14 +38,16 @@ class uvm_cpu_transaction extends uvm_sequence_item;
                instr == rhs_.instr &&
                expected_out == rhs_.expected_out &&
                check_out == rhs_.check_out &&
-               check_flags == rhs_.check_flags &&
                Z == rhs_.Z &&
                N == rhs_.N &&
-               V == rhs_.V;
+               V == rhs_.V &&
+               is_reset == rhs_.is_reset;
     endfunction
 
     function string convert2string();
-        return $sformatf("instr=0x%04h, expected_out=0x%04h, check_out=%0b, check_flags=%0b, Z=%0b, N=%0b, V=%0b",
-                         instr, expected_out, check_out, check_flags, Z, N, V);
+        instr_t cmd;
+        cmd = instr_t'(instr[15:11]);
+        return $sformatf("instr=0x%04h, cmd=%s, expected_out=0x%04h, check_out=%0b, Z=%0b, N=%0b, V=%0b, is_reset=%0b",
+                         instr, cmd.name(), expected_out, check_out, Z, N, V, is_reset);
     endfunction
 endclass : uvm_cpu_transaction
